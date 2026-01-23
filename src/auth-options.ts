@@ -1,6 +1,11 @@
 import type { NextAuthOptions } from "next-auth";
 import AzureADProvider from "next-auth/providers/azure-ad";
 
+type EntraProfile = {
+  preferred_username?: string;
+  oid?: string;
+};
+
 export const authOptions: NextAuthOptions = {
   providers: [
     AzureADProvider({
@@ -12,7 +17,6 @@ export const authOptions: NextAuthOptions = {
 
   session: { strategy: "jwt" },
 
-  // Strongly recommended
   secret: process.env.NEXTAUTH_SECRET,
 
   pages: {
@@ -21,17 +25,16 @@ export const authOptions: NextAuthOptions = {
 
   callbacks: {
     async jwt({ token, account, profile }) {
-      // Persist access token (useful for calling Graph / downstream APIs)
       if (account?.access_token) token.accessToken = account.access_token;
-
-      // Persist id_token if you need it for downstream validation
       if (account?.id_token) token.idToken = account.id_token;
 
-      // UPN / preferred username (Entra commonly supplies preferred_username)
-      const preferred = (profile as { preferred_username?: string } | null)
-        ?.preferred_username;
+      const p = profile as EntraProfile | null;
 
-      token.upn = preferred ?? token.email ?? token.upn ?? null;
+      // Prefer Entra's preferred_username; fall back to token.email
+      token.upn = p?.preferred_username ?? token.email ?? token.upn ?? null;
+
+      // Optional but recommended: stable Entra object id
+      token.oid = p?.oid ?? token.oid ?? null;
 
       return token;
     },
@@ -40,6 +43,7 @@ export const authOptions: NextAuthOptions = {
       session.accessToken = token.accessToken;
       session.idToken = token.idToken;
       session.upn = token.upn;
+      session.oid = token.oid;
 
       return session;
     },

@@ -1,17 +1,20 @@
 import "next-auth";
+import "next-auth/jwt";
 
 declare module "next-auth" {
   interface Session {
+    upn?: string | null;
+    oid?: string | null;
     accessToken?: string;
     idToken?: string;
-    upn?: string | null;
   }
 }
 
 declare module "next-auth/jwt" {
   interface JWT {
+    upn?: string | null;
+    oid?: string | null;
     accessToken?: string;
     idToken?: string;
-    upn?: string | null;
   }
 }
