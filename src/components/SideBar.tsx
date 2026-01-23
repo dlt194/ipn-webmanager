@@ -1,3 +1,6 @@
+"use client";
+import dynamic from "next/dynamic";
+
 import { Plus, EthernetPort } from "lucide-react";
 
 import {
@@ -12,6 +15,12 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Button } from "./ui/button";
+import { ProfileMenu } from "./ProfileMenu";
+
+const ThemeToggle = dynamic(
+  () => import("@/components/theme-toggle").then((m) => m.ThemeToggle),
+  { ssr: false },
+);
 
 // Menu items.
 const items = [
@@ -67,6 +76,13 @@ export default function SideBar() {
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup className="absolute bottom-0 left-0">
+          <SidebarSeparator className="my-2" />
+          <div className="flex justify-between">
+            <ProfileMenu />
+            <ThemeToggle />
+          </div>
         </SidebarGroup>
       </SidebarContent>
     </Sidebar>

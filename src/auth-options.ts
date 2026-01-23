@@ -12,22 +12,35 @@ export const authOptions: NextAuthOptions = {
 
   session: { strategy: "jwt" },
 
+  // Strongly recommended
+  secret: process.env.NEXTAUTH_SECRET,
+
   pages: {
     signIn: "/login",
   },
 
   callbacks: {
     async jwt({ token, account, profile }) {
-      if (account?.access_token)
-        (token as any).accessToken = account.access_token;
-      (token as any).upn =
-        (profile as any)?.preferred_username ?? token.email ?? null;
+      // Persist access token (useful for calling Graph / downstream APIs)
+      if (account?.access_token) token.accessToken = account.access_token;
+
+      // Persist id_token if you need it for downstream validation
+      if (account?.id_token) token.idToken = account.id_token;
+
+      // UPN / preferred username (Entra commonly supplies preferred_username)
+      const preferred = (profile as { preferred_username?: string } | null)
+        ?.preferred_username;
+
+      token.upn = preferred ?? token.email ?? token.upn ?? null;
+
       return token;
     },
 
     async session({ session, token }) {
-      (session as any).accessToken = (token as any).accessToken;
-      (session as any).upn = (token as any).upn;
+      session.accessToken = token.accessToken;
+      session.idToken = token.idToken;
+      session.upn = token.upn;
+
       return session;
     },
   },

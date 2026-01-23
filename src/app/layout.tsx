@@ -1,20 +1,16 @@
 import type { Metadata } from "next";
-import { Space_Mono, JetBrains_Mono } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import SideBar from "@/components/SideBar";
+import { ThemeProvider } from "@/components/theme-provider";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/auth-options";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-sans",
-});
-
-const spaceMono = Space_Mono({
-  subsets: ["latin"],
-  weight: "400",
-  variable: "--font-space-mono",
-  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -22,21 +18,35 @@ export const metadata: Metadata = {
   description: "Created by Dan Thomas",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
+  const session = await getServerSession(authOptions);
+  const isSignedIn = !!session;
+
   return (
-    <html lang="en" className={jetbrainsMono.variable}>
+    <html lang="en" suppressHydrationWarning>
       <body
-        className={`${spaceMono.className} min-h-screen bg-zinc-50 antialiased dark:bg-black`}
+        className={`${jetbrainsMono.className} min-h-screen antialiased bg-background`}
       >
         <Providers>
-          <SidebarProvider>
-            <SideBar />
-            <main>{children}</main>
-          </SidebarProvider>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            {isSignedIn ? (
+              <SidebarProvider>
+                <SideBar />
+                <main className="flex-1 bg-slate-50 dark:bg-[#1e2939]">
+                  {children}
+                </main>
+              </SidebarProvider>
+            ) : (
+              // 🔑 Logged out: let page fully control layout
+              <main className="min-h-screen flex items-center justify-center">
+                {children}
+              </main>
+            )}
+          </ThemeProvider>
         </Providers>
       </body>
     </html>
