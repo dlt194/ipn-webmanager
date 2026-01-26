@@ -144,13 +144,14 @@ export default function SideBar() {
     <Sidebar>
       <SidebarContent className="relative">
         <SidebarGroup>
-          <SidebarGroupLabel className="text-xl font-semibold tracking-tight">
-            Web Configuration
-          </SidebarGroupLabel>
-          <SidebarGroupLabel className="text-sm text-zinc-600 dark:text-zinc-400">
-            by Dan Thomas
-          </SidebarGroupLabel>
-
+          <Link href={"/"}>
+            <SidebarGroupLabel className="text-xl font-semibold tracking-tight">
+              Web Configuration
+            </SidebarGroupLabel>
+            <SidebarGroupLabel className="text-sm text-zinc-600 dark:text-zinc-400">
+              by Dan Thomas
+            </SidebarGroupLabel>
+          </Link>
           <SidebarSeparator className="my-2" />
 
           <SidebarGroupContent>
