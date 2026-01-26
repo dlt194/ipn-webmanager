@@ -1,8 +1,16 @@
 "use client";
+
 import dynamic from "next/dynamic";
 import * as React from "react";
 import Link from "next/link";
 import { EthernetPort } from "lucide-react";
+
+import {
+  clientHttpCheck,
+  normalizeHostForClient,
+  resolveReachability,
+  type Reachability,
+} from "@/lib/reachability";
 
 import {
   Sidebar,
@@ -15,6 +23,14 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
 import { ProfileMenu } from "./ProfileMenu";
 import { AddSystemDialog } from "@/components/AddSystemDialog";
 
@@ -30,109 +46,69 @@ type ServerRow = {
   username: string;
 };
 
-type Status = "connected" | "disconnected" | "unknown";
+function iconClass(r: Reachability) {
+  if (r === "green") return "text-green-600";
+  if (r === "amber") return "text-amber-500 animate-pulse";
+  return "text-red-600";
+}
 
 export default function SideBar() {
   const [servers, setServers] = React.useState<ServerRow[]>([]);
-  const [statusById, setStatusById] = React.useState<Record<string, Status>>(
-    {},
-  );
   const [loading, setLoading] = React.useState(true);
+  const [probeById, setProbeById] = React.useState<
+    Record<string, { server: boolean; client: boolean }>
+  >({});
 
-  // Load servers once
-  React.useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const res = await fetch("/api/server-configs", { cache: "no-store" });
-        if (!res.ok) throw new Error("Failed to load server configs");
-        const data = (await res.json()) as ServerRow[];
-        if (cancelled) return;
-
-        setServers(data);
-        // default unknown
-        const initial: Record<string, Status> = {};
-        for (const s of data) initial[s.id] = "unknown";
-        setStatusById(initial);
-      } catch {
-        if (!cancelled) setServers([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Periodic status checks (occasional ping)
-  React.useEffect(() => {
-    if (servers.length === 0) return;
-
-    let cancelled = false;
-
-    async function checkOne(id: string) {
-      try {
-        const res = await fetch(`/api/server-configs/${id}/status`, {
-          cache: "no-store",
-        });
-        if (!res.ok) throw new Error("status failed");
-        const data = (await res.json()) as { reachable: boolean };
-        if (cancelled) return;
-
-        setStatusById((prev) => ({
-          ...prev,
-          [id]: data.reachable ? "connected" : "disconnected",
-        }));
-      } catch {
-        if (cancelled) return;
-        setStatusById((prev) => ({ ...prev, [id]: "disconnected" }));
-      }
-    }
-
-    // Initial check (staggered to avoid hammering)
-    (async () => {
-      for (const s of servers) {
-        if (cancelled) return;
-        await checkOne(s.id);
-        await new Promise((r) => setTimeout(r, 150)); // small stagger
-      }
-    })();
-
-    // Repeat every 60s (adjust as you like)
-    const interval = setInterval(() => {
-      servers.forEach((s) => {
-        void checkOne(s.id);
-      });
-    }, 60_000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [servers]);
+  // final resolved state per system (green/amber/red)
+  const [reachabilityById, setReachabilityById] = React.useState<
+    Record<string, Reachability>
+  >({});
 
   const loadServers = React.useCallback(async () => {
     const res = await fetch("/api/server-configs", { cache: "no-store" });
-    if (!res.ok) return;
+
+    if (!res.ok) {
+      setServers([]);
+      setReachabilityById({});
+      setProbeById({});
+      return;
+    }
 
     const rows = (await res.json()) as ServerRow[];
     setServers(rows);
 
-    // keep status map in sync (remove deleted IDs, add new IDs as unknown)
-    setStatusById((prev) => {
-      const next: Record<string, Status> = {};
-      for (const r of rows) next[r.id] = prev[r.id] ?? "unknown";
+    // keep reachability map in sync
+    setReachabilityById((prev) => {
+      const next: Record<string, Reachability> = {};
+      for (const r of rows) next[r.id] = prev[r.id] ?? "red";
+      return next;
+    });
+
+    // keep probe map in sync
+    setProbeById((prev) => {
+      const next: Record<string, { server: boolean; client: boolean }> = {};
+      for (const r of rows)
+        next[r.id] = prev[r.id] ?? { server: false, client: false };
       return next;
     });
   }, []);
 
+  // initial load
   React.useEffect(() => {
-    void loadServers();
+    let cancelled = false;
+    (async () => {
+      try {
+        await loadServers();
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [loadServers]);
 
+  // refresh when systems are created/deleted
   React.useEffect(() => {
     const onChanged = () => void loadServers();
     window.addEventListener("server-configs:changed", onChanged);
@@ -140,11 +116,58 @@ export default function SideBar() {
       window.removeEventListener("server-configs:changed", onChanged);
   }, [loadServers]);
 
+  // periodic reachability checks (server TCP + client HTTP best-effort)
+  React.useEffect(() => {
+    if (servers.length === 0) return;
+
+    let cancelled = false;
+
+    async function pollOne(id: string, host: string) {
+      const [serverOk, clientOk] = await Promise.all([
+        fetch(`/api/server-configs/${encodeURIComponent(id)}/status`, {
+          cache: "no-store",
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => !!j?.serverReachable)
+          .catch(() => false),
+
+        clientHttpCheck(normalizeHostForClient(host)).catch(() => false),
+      ]);
+
+      if (cancelled) return;
+
+      const resolved = resolveReachability(serverOk, clientOk);
+      setReachabilityById((prev) => ({ ...prev, [id]: resolved }));
+      setProbeById((prev) => ({
+        ...prev,
+        [id]: { server: serverOk, client: clientOk },
+      }));
+    }
+
+    async function pollAll() {
+      // stagger to avoid hammering
+      for (const s of servers) {
+        if (cancelled) return;
+        await pollOne(s.id, s.host);
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    }
+
+    // initial + interval
+    void pollAll();
+    const interval = setInterval(() => void pollAll(), 30_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [servers]);
+
   return (
     <Sidebar>
       <SidebarContent className="relative">
         <SidebarGroup>
-          <Link href={"/"}>
+          <Link href="/">
             <SidebarGroupLabel className="text-xl font-semibold tracking-tight">
               Web Configuration
             </SidebarGroupLabel>
@@ -152,57 +175,84 @@ export default function SideBar() {
               by Dan Thomas
             </SidebarGroupLabel>
           </Link>
+
           <SidebarSeparator className="my-2" />
 
           <SidebarGroupContent>
-            <SidebarMenu>
-              <AddSystemDialog
-                onCreated={(created) => {
-                  setServers((prev) => [created, ...prev]);
-                  setStatusById((prev) => ({
-                    ...prev,
-                    [created.id]: "unknown",
-                  }));
-                }}
-              />
+            <TooltipProvider>
+              <SidebarMenu>
+                <AddSystemDialog
+                  onCreated={(created) => {
+                    setServers((prev) => [created, ...prev]);
+                    setReachabilityById((prev) => ({
+                      ...prev,
+                      [created.id]: "red",
+                    }));
+                    setProbeById((prev) => ({
+                      ...prev,
+                      [created.id]: { server: false, client: false },
+                    }));
+                    window.dispatchEvent(new Event("server-configs:changed"));
+                  }}
+                />
 
-              <SidebarSeparator className="my-2" />
+                <SidebarSeparator className="my-2" />
 
-              {loading ? (
-                <div className="px-2 py-2 text-sm text-muted-foreground">
-                  Loading systems…
-                </div>
-              ) : servers.length === 0 ? (
-                <div className="px-2 py-2 text-sm text-muted-foreground">
-                  No systems configured.
-                </div>
-              ) : (
-                servers.map((s) => {
-                  const status = statusById[s.id] ?? "unknown";
+                {loading ? (
+                  <div className="px-2 py-2 text-sm text-muted-foreground">
+                    Loading systems…
+                  </div>
+                ) : servers.length === 0 ? (
+                  <div className="px-2 py-2 text-sm text-muted-foreground">
+                    No systems configured.
+                  </div>
+                ) : (
+                  servers.map((s) => {
+                    const r = reachabilityById[s.id] ?? "red";
+                    return (
+                      <SidebarMenuItem key={s.id}>
+                        <SidebarMenuButton asChild>
+                          <Link
+                            href={`/systems/${encodeURIComponent(s.id)}`}
+                            className="flex items-center gap-2"
+                          >
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex">
+                                  <EthernetPort className={iconClass(r)} />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="right" align="center">
+                                <div className="text-xs space-y-1">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span>Server</span>
+                                    <span className="font-medium">
+                                      {(probeById[s.id]?.server ?? false)
+                                        ? "✓"
+                                        : "✗"}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span>Client</span>
+                                    <span className="font-medium">
+                                      {(probeById[s.id]?.client ?? false)
+                                        ? "✓"
+                                        : "✗"}
+                                    </span>
+                                  </div>
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
 
-                  const iconClass =
-                    status === "disconnected"
-                      ? "h-4 w-4 text-red-600 animate-[pulse_1.5s_ease-in-out_infinite]"
-                      : status === "connected"
-                        ? "h-4 w-4 text-green-600"
-                        : "h-4 w-4 text-zinc-400";
-
-                  return (
-                    <SidebarMenuItem key={s.id}>
-                      <SidebarMenuButton asChild>
-                        <Link
-                          href={`/systems/${encodeURIComponent(s.id)}`}
-                          className="flex items-center gap-2"
-                        >
-                          <EthernetPort className={iconClass} />
-                          <span className="truncate">{s.name}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })
-              )}
-            </SidebarMenu>
+                            <span className="truncate">{s.name}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })
+                )}
+              </SidebarMenu>
+            </TooltipProvider>
           </SidebarGroupContent>
         </SidebarGroup>
 

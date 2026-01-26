@@ -105,7 +105,7 @@ export function AddSystemDialog({ onCreated }: AddSystemDialogProps) {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-lg dark:bg-[#101828] text-white">
+      <DialogContent className="sm:max-w-lg bg-[#101828] text-white">
         <DialogHeader>
           <DialogTitle>Add system</DialogTitle>
           <DialogDescription>
