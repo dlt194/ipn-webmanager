@@ -49,8 +49,9 @@ export function SystemTopNav({ systemId }: Props) {
 
               return (
                 <NavigationMenuItem key={s.label}>
-                  <Link href={href} legacyBehavior passHref>
-                    <NavigationMenuLink
+                  <NavigationMenuLink asChild>
+                    <Link
+                      href={href}
                       className={cn(
                         "rounded-md px-3 py-2 text-sm transition-colors",
                         "hover:bg-muted/60",
@@ -58,8 +59,8 @@ export function SystemTopNav({ systemId }: Props) {
                       )}
                     >
                       {s.label}
-                    </NavigationMenuLink>
-                  </Link>
+                    </Link>
+                  </NavigationMenuLink>
                 </NavigationMenuItem>
               );
             })}
