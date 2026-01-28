@@ -2,7 +2,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth-options";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import SystemTopBar from "./system-top-bar";
 
 export default async function SystemPage({
   params,
@@ -34,8 +33,6 @@ export default async function SystemPage({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <SystemTopBar systemId={system.id} />
-
       <div className="p-6 space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">{system.name}</h1>
         <div className="text-sm text-muted-foreground">

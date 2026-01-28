@@ -27,6 +27,7 @@ const sections = [
   { label: "Licenses", href: "licenses" },
   { label: "Nodes", href: "nodes" },
   { label: "Provision IP", href: "provision-ip" },
+  { label: "Settings", href: "settings" },
 ] as const;
 
 export function SystemTopNav({ systemId }: Props) {

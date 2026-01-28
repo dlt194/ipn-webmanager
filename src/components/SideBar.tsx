@@ -34,6 +34,9 @@ import {
 import { ProfileMenu } from "./ProfileMenu";
 import { AddSystemDialog } from "@/components/AddSystemDialog";
 
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+
 const ThemeToggle = dynamic(
   () => import("@/components/theme-toggle").then((m) => m.ThemeToggle),
   { ssr: false },
@@ -163,6 +166,14 @@ export default function SideBar() {
     };
   }, [servers]);
 
+  const pathname = usePathname();
+
+  const activeSystemId = React.useMemo(() => {
+    // Matches /systems/<id> and /systems/<id>/anything
+    const m = pathname.match(/^\/systems\/([^/]+)(?:\/|$)/);
+    return m?.[1] ? decodeURIComponent(m[1]) : null;
+  }, [pathname]);
+
   return (
     <Sidebar>
       <SidebarContent className="relative">
@@ -208,13 +219,20 @@ export default function SideBar() {
                   </div>
                 ) : (
                   servers.map((s) => {
+                    const isActive = activeSystemId === s.id;
                     const r = reachabilityById[s.id] ?? "red";
                     return (
                       <SidebarMenuItem key={s.id}>
                         <SidebarMenuButton asChild>
                           <Link
                             href={`/systems/${encodeURIComponent(s.id)}`}
-                            className="flex items-center gap-2"
+                            aria-current={isActive ? "page" : undefined}
+                            className={cn(
+                              "flex items-center gap-2 rounded-md px-2 py-2 transition-colors",
+                              "hover:bg-muted/60",
+                              isActive &&
+                                "bg-muted font-medium ring-1 ring-border",
+                            )}
                           >
                             <Tooltip>
                               <TooltipTrigger asChild>

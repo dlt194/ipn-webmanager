@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth-options";
 import { prisma } from "@/lib/prisma";
 import net from "node:net";
+import { resolveOwner } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -41,7 +42,7 @@ export async function GET(
   const { id } = await ctx.params;
 
   const session = await getServerSession(authOptions);
-  const owner = session?.oid ?? null;
+  const owner = resolveOwner(session);
   if (!owner) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
