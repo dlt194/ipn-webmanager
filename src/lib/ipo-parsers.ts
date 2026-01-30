@@ -7,6 +7,18 @@ export type IpoUserRow = {
   [key: string]: string;
 };
 
+export type IpoExtensionRow = {
+  guid: string;
+  id: string;
+  extension: string;
+  typeInfo: string;
+  callerDisplayType: string;
+  module: string;
+  port: string;
+  location: string;
+  [key: string]: string;
+};
+
 function asString(v: unknown): string {
   if (v === null || v === undefined) return "";
   return typeof v === "string" ? v : String(v);
@@ -132,4 +144,73 @@ export function parseUsersAny(text: string): {
   }
 
   return { users: [], format: "unknown" };
+}
+
+type IpoExtensionLike = {
+  "@GUID"?: unknown;
+  GUID?: unknown;
+  Id?: unknown;
+  Extension?: unknown;
+  TypeInfo?: unknown;
+  CallerDisplayType?: unknown;
+  Module?: unknown;
+  Port?: unknown;
+  Location?: unknown;
+};
+
+export function parseExtensionsAny(text: string): {
+  extensions: IpoExtensionRow[];
+  format: "json" | "xml" | "unknown";
+} {
+  const j = tryParseJson(text);
+
+  if (j && typeof j === "object") {
+    const resp = asRecord(j)?.response;
+    const respRec = asRecord(resp);
+    const status = asString(respRec?.["@status"] ?? respRec?.status);
+
+    if (status === "1") {
+      const dataRec = asRecord(respRec?.data);
+      const ws = dataRec?.ws_object;
+      const arr = Array.isArray(ws) ? ws : ws ? [ws] : [];
+
+      const extensions: IpoExtensionRow[] = arr
+        .map((item) => asRecord(item)?.Extension)
+        .map((ext) => asRecord(ext))
+        .filter((ext): ext is Record<string, unknown> => ext !== null)
+        .map((ext) => {
+          const normalized: Record<string, string> = {};
+          for (const [key, value] of Object.entries(ext)) {
+            normalized[key] = asString(value);
+          }
+
+          const typed = ext as IpoExtensionLike;
+          const guid = asString(
+            typed["@GUID"] ?? typed.GUID ?? normalized["@GUID"] ?? normalized.GUID,
+          );
+
+          return {
+            guid,
+            id: asString(typed.Id ?? normalized.Id),
+            extension: asString(typed.Extension ?? normalized.Extension),
+            typeInfo: asString(typed.TypeInfo ?? normalized.TypeInfo),
+            callerDisplayType: asString(
+              typed.CallerDisplayType ?? normalized.CallerDisplayType,
+            ),
+            module: asString(typed.Module ?? normalized.Module),
+            port: asString(typed.Port ?? normalized.Port),
+            location: asString(typed.Location ?? normalized.Location),
+            ...normalized,
+          };
+        });
+
+      return { extensions, format: "json" };
+    }
+
+    if (status === "0") {
+      return { extensions: [], format: "json" };
+    }
+  }
+
+  return { extensions: [], format: "unknown" };
 }

@@ -48,6 +48,7 @@
 }
 
 :root {
+  --pie-chart-size: 14rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.13 0.028 261.692);
   --card: oklch(1 0 0);
@@ -83,7 +84,7 @@
 }
 
 .dark {
-  --background: oklch(0.13 0.028 261.692);
+  --background: #101828;
   --foreground: oklch(0.985 0.002 247.839);
   --card: oklch(0.21 0.034 264.665);
   --card-foreground: oklch(0.985 0.002 247.839);
@@ -123,5 +124,12 @@
 
   html.dark {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .pie-chart {
+    width: var(--pie-chart-size);
+    height: var(--pie-chart-size);
   }
 }

@@ -2,51 +2,21 @@
 
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@/components/ui/input-group";
-import { Eye, EyeOff, Loader2, Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
-
-type Row = {
-  guid: string;
-  name: string;
-  fullName: string;
-  extension: string;
-  assignedPackage: string;
-  [key: string]: string;
-};
+import {
+  EMPTY_EDIT_STATE,
+  PACKAGE_MAP,
+  type Row,
+  type UserEditState,
+} from "./users-types";
+import {
+  type SortDir,
+  type SortKey,
+  UsersTable,
+} from "./users-table";
+import { UsersToolbar } from "./users-toolbar";
+import { UserDeleteDialog } from "./user-delete-dialog";
+import { UserEditDrawer } from "./user-edit-drawer";
 
 type ApiOk = {
   users: Row[];
@@ -56,123 +26,23 @@ type ApiOk = {
 
 type ApiErr = { error?: string };
 
-const PACKAGE_MAP: Record<number, string> = {
-  1: "Basic User",
-  2: "Teleworker User",
-  3: "Mobile User",
-  4: "Power User",
-  5: "Office Worker User",
-  6: "Not Used",
-  7: "Centralized User",
-  8: "Non Licensed User",
-};
-
-const TWINNING_OPTIONS = [
-  { value: "0", label: "No Twinning" },
-  { value: "1", label: "Internal Twinning" },
-  { value: "2", label: "Mobile Twinning" },
-] as const;
-
-type SortKey = "name" | "fullName" | "extension" | "assignedPackage";
-type SortDir = "asc" | "desc";
-
 function compare(a: string, b: string) {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 }
 
-type UserEditState = {
-  name: string;
-  fullName: string;
-  extension: string;
-  assignedPackage: string;
-  canIntrude: string;
-  cannotBeIntruded: string;
-  dndExceptions: string;
-  doNotDisturb: string;
-  expansionType: string;
-  flareEnabled: string;
-  flare: string;
-  forceAccountCode: string;
-  idleLinePreference: string;
-  loginCode: string;
-  mobilityFeatures: string;
-  oneXClient: string;
-  oneXTelecommuter: string;
-  outgoingCallBar: string;
-  outOfHoursUserRights: string;
-  userRightsTimeProfile: string;
-  password: string;
-  phoneType: string;
-  priority: string;
-  receptionist: string;
-  remoteWorker: string;
-  sipContact: string;
-  sipName: string;
-  specificBstType: string;
-  twinningType: string;
-  umsWebServices: string;
-  userRights: string;
-  voicemailCode: string;
-  voicemailEmail: string;
-  voicemailOn: string;
-  webCollaboration: string;
-  xDirectory: string;
-};
-
-const EMPTY_EDIT_STATE: UserEditState = {
-  name: "",
-  fullName: "",
-  extension: "",
-  assignedPackage: "",
-  canIntrude: "false",
-  cannotBeIntruded: "false",
-  dndExceptions: "",
-  doNotDisturb: "false",
-  expansionType: "",
-  flareEnabled: "false",
-  flare: "false",
-  forceAccountCode: "false",
-  idleLinePreference: "false",
-  loginCode: "",
-  mobilityFeatures: "false",
-  oneXClient: "false",
-  oneXTelecommuter: "false",
-  outgoingCallBar: "false",
-  outOfHoursUserRights: "",
-  userRightsTimeProfile: "",
-  password: "",
-  phoneType: "",
-  priority: "",
-  receptionist: "false",
-  remoteWorker: "false",
-  sipContact: "",
-  sipName: "",
-  specificBstType: "",
-  twinningType: "",
-  umsWebServices: "false",
-  userRights: "",
-  voicemailCode: "",
-  voicemailEmail: "",
-  voicemailOn: "false",
-  webCollaboration: "false",
-  xDirectory: "false",
-};
-
 export default function UsersClient({ systemId }: { systemId: string }) {
   const [rows, setRows] = React.useState<Row[]>([]);
-  const [raw, setRaw] = React.useState<string | null>(null);
-  const [meta, setMeta] = React.useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   const [sortKey, setSortKey] = React.useState<SortKey>("name");
   const [sortDir, setSortDir] = React.useState<SortDir>("asc");
+  const [pageSize] = React.useState(25);
+  const [page, setPage] = React.useState(1);
 
   const fetchUsers = React.useCallback(async () => {
     setLoading(true);
     setError(null);
-    setRaw(null);
-    setMeta(null);
 
     const res = await fetch(
       `/api/server-configs/${encodeURIComponent(systemId)}/users?debug=1`,
@@ -195,8 +65,6 @@ export default function UsersClient({ systemId }: { systemId: string }) {
     }
 
     setRows(json.users ?? []);
-    setRaw(typeof json.raw === "string" ? json.raw : null);
-    setMeta((json.meta as Record<string, unknown>) ?? null);
   }, [systemId]);
 
   React.useEffect(() => {
@@ -262,44 +130,11 @@ export default function UsersClient({ systemId }: { systemId: string }) {
   const PACKAGE_POWER = "4";
   const PACKAGE_OFFICE_WORKER = "5";
 
-  function isChecked(value: string) {
-    return value === "true";
-  }
-
-  function booleanLabel(value: string) {
-    return isChecked(value) ? "Yes" : "No";
-  }
-
-  function renderBooleanField(
-    id: string,
-    label: string,
-    value: string,
-    onChange: (nextValue: "true" | "false") => void,
-    disabled = false,
-  ) {
-    return (
-      <div className="flex items-center justify-between gap-4 rounded border px-3 py-2">
-        <div className="space-y-1">
-          <Label htmlFor={id}>{label}</Label>
-          <p className="text-xs text-muted-foreground">
-            {booleanLabel(value)}
-          </p>
-        </div>
-        <input
-          id={id}
-          type="checkbox"
-          checked={isChecked(value)}
-          onChange={(e) => onChange(e.target.checked ? "true" : "false")}
-          disabled={editSaving || disabled}
-          className="size-4 accent-primary"
-        />
-      </div>
-    );
-  }
-
   const [editOpen, setEditOpen] = React.useState(false);
   const [editRow, setEditRow] = React.useState<Row | null>(null);
   const [editState, setEditState] =
+    React.useState<UserEditState>(EMPTY_EDIT_STATE);
+  const [originalEditState, setOriginalEditState] =
     React.useState<UserEditState>(EMPTY_EDIT_STATE);
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [confirmLoginCode, setConfirmLoginCode] = React.useState("");
@@ -309,6 +144,24 @@ export default function UsersClient({ systemId }: { systemId: string }) {
   const [showVoicemailCode, setShowVoicemailCode] = React.useState(false);
   const [editError, setEditError] = React.useState<string | null>(null);
   const [editSaving, setEditSaving] = React.useState(false);
+
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [createState, setCreateState] = React.useState<UserEditState>({
+    ...EMPTY_EDIT_STATE,
+    assignedPackage: "1",
+  });
+  const [createConfirmPassword, setCreateConfirmPassword] =
+    React.useState("");
+  const [createConfirmLoginCode, setCreateConfirmLoginCode] =
+    React.useState("");
+  const [createConfirmVoicemailCode, setCreateConfirmVoicemailCode] =
+    React.useState("");
+  const [createShowPassword, setCreateShowPassword] = React.useState(false);
+  const [createShowLoginCode, setCreateShowLoginCode] = React.useState(false);
+  const [createShowVoicemailCode, setCreateShowVoicemailCode] =
+    React.useState(false);
+  const [createError, setCreateError] = React.useState<string | null>(null);
+  const [createSaving, setCreateSaving] = React.useState(false);
 
   const [search, setSearch] = React.useState("");
 
@@ -324,6 +177,22 @@ export default function UsersClient({ systemId }: { systemId: string }) {
     });
   }, [search, sorted]);
 
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  const paged = React.useMemo(() => {
+    const safePage = Math.min(Math.max(1, page), pageCount);
+    const start = (safePage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageCount, pageSize]);
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [search, sortKey, sortDir, pageSize, systemId]);
+
+  React.useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
+
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deleteRow, setDeleteRow] = React.useState<Row | null>(null);
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
@@ -334,7 +203,7 @@ export default function UsersClient({ systemId }: { systemId: string }) {
       keys.map((k) => row[k]).find((v) => typeof v === "string") ?? "";
 
     setEditRow(row);
-    setEditState({
+    const nextState: UserEditState = {
       ...EMPTY_EDIT_STATE,
       name: getAnyField(["name", "Name"]),
       fullName: getAnyField(["fullName", "FullName"]),
@@ -387,7 +256,9 @@ export default function UsersClient({ systemId }: { systemId: string }) {
       webCollaboration:
         getAnyField(["WebCollaboration", "webCollaboration"]) || "false",
       xDirectory: getAnyField(["XDirectory", "xDirectory"]) || "false",
-    });
+    };
+    setEditState(nextState);
+    setOriginalEditState(nextState);
     setConfirmPassword("");
     setConfirmLoginCode(getAnyField(["LoginCode", "loginCode"]));
     setConfirmVoicemailCode(getAnyField(["VoicemailCode", "voicemailCode"]));
@@ -407,6 +278,23 @@ export default function UsersClient({ systemId }: { systemId: string }) {
   function closeEdit() {
     if (editSaving) return;
     setEditOpen(false);
+  }
+
+  function startCreate() {
+    setCreateState({ ...EMPTY_EDIT_STATE, assignedPackage: "1" });
+    setCreateConfirmPassword("");
+    setCreateConfirmLoginCode("");
+    setCreateConfirmVoicemailCode("");
+    setCreateShowPassword(false);
+    setCreateShowLoginCode(false);
+    setCreateShowVoicemailCode(false);
+    setCreateError(null);
+    setCreateOpen(true);
+  }
+
+  function closeCreate() {
+    if (createSaving) return;
+    setCreateOpen(false);
   }
 
   function applyPackageRules(
@@ -497,48 +385,150 @@ export default function UsersClient({ systemId }: { systemId: string }) {
     setEditSaving(true);
     setEditError(null);
 
-    const payload = {
-      guid: editRow.guid,
-      name: editState.name.trim(),
-      fullName: editState.fullName.trim(),
-      extension: editState.extension.trim(),
-      assignedPackage: editState.assignedPackage,
-      canIntrude: editState.canIntrude,
-      cannotBeIntruded: editState.cannotBeIntruded,
-      dndExceptions: editState.dndExceptions,
-      doNotDisturb: editState.doNotDisturb,
-      flareEnabled: editState.flareEnabled,
-      flare: editState.flare,
-      forceAccountCode: editState.forceAccountCode,
-      idleLinePreference: editState.idleLinePreference,
-      loginCode: editState.loginCode,
-      mobilityFeatures: editState.mobilityFeatures,
-      oneXClient: editState.oneXClient,
-      oneXTelecommuter: editState.oneXTelecommuter,
-      outgoingCallBar: editState.outgoingCallBar,
-      outOfHoursUserRights: editState.outOfHoursUserRights,
-      userRightsTimeProfile: editState.userRightsTimeProfile,
-      password: editState.password,
-      priority: editState.priority,
-      receptionist: editState.receptionist,
-      remoteWorker: editState.remoteWorker,
-      sipContact: editState.sipContact,
-      sipName: editState.sipName,
-      twinningType: editState.twinningType,
-      umsWebServices: editState.umsWebServices,
-      userRights: editState.userRights,
-      voicemailCode: editState.voicemailCode,
-      voicemailEmail: editState.voicemailEmail,
-      voicemailOn: editState.voicemailOn,
-      webCollaboration: editState.webCollaboration,
-      xDirectory: editState.xDirectory,
+    const payload: Record<string, string> = { guid: editRow.guid };
+    const addIfChanged = (
+      key: keyof UserEditState,
+      value: string,
+      original: string,
+      normalize = false,
+    ) => {
+      const nextVal = normalize ? value.trim() : value;
+      const prevVal = normalize ? original.trim() : original;
+      if (nextVal !== prevVal) payload[key] = nextVal;
     };
+
+    addIfChanged("name", editState.name, originalEditState.name, true);
+    addIfChanged("fullName", editState.fullName, originalEditState.fullName, true);
+    addIfChanged("extension", editState.extension, originalEditState.extension, true);
+    addIfChanged(
+      "assignedPackage",
+      editState.assignedPackage,
+      originalEditState.assignedPackage,
+    );
+    addIfChanged("canIntrude", editState.canIntrude, originalEditState.canIntrude);
+    addIfChanged(
+      "cannotBeIntruded",
+      editState.cannotBeIntruded,
+      originalEditState.cannotBeIntruded,
+    );
+    addIfChanged(
+      "dndExceptions",
+      editState.dndExceptions,
+      originalEditState.dndExceptions,
+      true,
+    );
+    addIfChanged(
+      "doNotDisturb",
+      editState.doNotDisturb,
+      originalEditState.doNotDisturb,
+    );
+    addIfChanged(
+      "flareEnabled",
+      editState.flareEnabled,
+      originalEditState.flareEnabled,
+    );
+    addIfChanged("flare", editState.flare, originalEditState.flare);
+    addIfChanged(
+      "forceAccountCode",
+      editState.forceAccountCode,
+      originalEditState.forceAccountCode,
+    );
+    addIfChanged(
+      "idleLinePreference",
+      editState.idleLinePreference,
+      originalEditState.idleLinePreference,
+    );
+    addIfChanged("loginCode", editState.loginCode, originalEditState.loginCode);
+    addIfChanged(
+      "mobilityFeatures",
+      editState.mobilityFeatures,
+      originalEditState.mobilityFeatures,
+    );
+    addIfChanged("oneXClient", editState.oneXClient, originalEditState.oneXClient);
+    addIfChanged(
+      "oneXTelecommuter",
+      editState.oneXTelecommuter,
+      originalEditState.oneXTelecommuter,
+    );
+    addIfChanged(
+      "outgoingCallBar",
+      editState.outgoingCallBar,
+      originalEditState.outgoingCallBar,
+    );
+    addIfChanged(
+      "outOfHoursUserRights",
+      editState.outOfHoursUserRights,
+      originalEditState.outOfHoursUserRights,
+      true,
+    );
+    addIfChanged(
+      "userRightsTimeProfile",
+      editState.userRightsTimeProfile,
+      originalEditState.userRightsTimeProfile,
+      true,
+    );
+    addIfChanged("priority", editState.priority, originalEditState.priority);
+    addIfChanged(
+      "receptionist",
+      editState.receptionist,
+      originalEditState.receptionist,
+    );
+    addIfChanged(
+      "remoteWorker",
+      editState.remoteWorker,
+      originalEditState.remoteWorker,
+    );
+    addIfChanged("sipContact", editState.sipContact, originalEditState.sipContact);
+    addIfChanged("sipName", editState.sipName, originalEditState.sipName);
+    addIfChanged(
+      "twinningType",
+      editState.twinningType,
+      originalEditState.twinningType,
+    );
+    addIfChanged(
+      "umsWebServices",
+      editState.umsWebServices,
+      originalEditState.umsWebServices,
+    );
+    addIfChanged("userRights", editState.userRights, originalEditState.userRights);
+    addIfChanged(
+      "voicemailCode",
+      editState.voicemailCode,
+      originalEditState.voicemailCode,
+    );
+    addIfChanged(
+      "voicemailEmail",
+      editState.voicemailEmail,
+      originalEditState.voicemailEmail,
+      true,
+    );
+    addIfChanged(
+      "voicemailOn",
+      editState.voicemailOn,
+      originalEditState.voicemailOn,
+    );
+    addIfChanged(
+      "webCollaboration",
+      editState.webCollaboration,
+      originalEditState.webCollaboration,
+    );
+    addIfChanged("xDirectory", editState.xDirectory, originalEditState.xDirectory);
+
+    if (editState.password.trim().length > 0) {
+      payload.password = editState.password;
+    }
+
+    if (Object.keys(payload).length === 1) {
+      setEditError("No changes to save.");
+      setEditSaving(false);
+      return;
+    }
 
     try {
       const res = await fetch(
         `/api/server-configs/${encodeURIComponent(systemId)}/users`,
         {
-          method: "POST",
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
           cache: "no-store",
           body: JSON.stringify(payload),
@@ -575,6 +565,111 @@ export default function UsersClient({ systemId }: { systemId: string }) {
     }
   }
 
+  async function submitCreate(e: React.FormEvent) {
+    e.preventDefault();
+
+    const name = createState.name.trim();
+    const extension = createState.extension.trim();
+    const assignedPackage = createState.assignedPackage.trim();
+    const password = createState.password;
+
+    if (!name || !extension || !assignedPackage || !password) {
+      setCreateError(
+        "name, extension, assignedPackage, and password are required.",
+      );
+      return;
+    }
+
+    if (password !== createConfirmPassword) {
+      setCreateError("Password confirmation does not match.");
+      return;
+    }
+
+    if (
+      createState.loginCode &&
+      createState.loginCode !== createConfirmLoginCode
+    ) {
+      setCreateError("Login code confirmation does not match.");
+      return;
+    }
+
+    if (
+      createState.voicemailCode &&
+      createState.voicemailCode !== createConfirmVoicemailCode
+    ) {
+      setCreateError("Voicemail code confirmation does not match.");
+      return;
+    }
+
+    setCreateSaving(true);
+    setCreateError(null);
+
+    const payload = {
+      name,
+      fullName: createState.fullName.trim(),
+      extension,
+      assignedPackage,
+      canIntrude: createState.canIntrude,
+      cannotBeIntruded: createState.cannotBeIntruded,
+      dndExceptions: createState.dndExceptions,
+      doNotDisturb: createState.doNotDisturb,
+      flareEnabled: createState.flareEnabled,
+      flare: createState.flare,
+      forceAccountCode: createState.forceAccountCode,
+      idleLinePreference: createState.idleLinePreference,
+      loginCode: createState.loginCode,
+      mobilityFeatures: createState.mobilityFeatures,
+      oneXClient: createState.oneXClient,
+      oneXTelecommuter: createState.oneXTelecommuter,
+      outgoingCallBar: createState.outgoingCallBar,
+      outOfHoursUserRights: createState.outOfHoursUserRights,
+      userRightsTimeProfile: createState.userRightsTimeProfile,
+      password,
+      priority: createState.priority,
+      receptionist: createState.receptionist,
+      remoteWorker: createState.remoteWorker,
+      sipContact: createState.sipContact,
+      sipName: createState.sipName,
+      twinningType: createState.twinningType,
+      umsWebServices: createState.umsWebServices,
+      userRights: createState.userRights,
+      voicemailCode: createState.voicemailCode,
+      voicemailEmail: createState.voicemailEmail,
+      voicemailOn: createState.voicemailOn,
+      webCollaboration: createState.webCollaboration,
+      xDirectory: createState.xDirectory,
+    };
+
+    try {
+      const res = await fetch(
+        `/api/server-configs/${encodeURIComponent(systemId)}/users`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify(payload),
+        },
+      );
+
+      const json = (await res.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+
+      if (!res.ok) {
+        throw new Error(json?.error ?? `Create failed (${res.status})`);
+      }
+
+      await fetchUsers();
+      setCreateOpen(false);
+    } catch (err) {
+      setCreateError(
+        err instanceof Error ? err.message : "Failed to create user.",
+      );
+    } finally {
+      setCreateSaving(false);
+    }
+  }
+
   async function confirmDelete() {
     if (!deleteRow) return;
 
@@ -588,7 +683,7 @@ export default function UsersClient({ systemId }: { systemId: string }) {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           cache: "no-store",
-          body: JSON.stringify({ guid: deleteRow.guid }),
+          body: JSON.stringify({ guid: deleteRow.guid, name: deleteRow.name }),
         },
       );
 
@@ -611,28 +706,13 @@ export default function UsersClient({ systemId }: { systemId: string }) {
     }
   }
 
-  const thBtn = (key: SortKey, label: string) => (
-    <button
-      type="button"
-      onClick={() => toggleSort(key)}
-      className="inline-flex items-center gap-1 font-medium"
-      title="Sort"
-    >
-      {label}
-      {sortKey === key ? (sortDir === "asc" ? "▲" : "▼") : null}
-    </button>
-  );
-
   return (
     <div className="p-6">
-      <div className="mb-4">
-        <Input
-          placeholder="Search by username, full name, or extension"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-md"
-        />
-      </div>
+      <UsersToolbar
+        search={search}
+        onSearchChange={setSearch}
+        onAdd={startCreate}
+      />
 
       <Card className="p-4">
         {loading ? (
@@ -646,801 +726,112 @@ export default function UsersClient({ systemId }: { systemId: string }) {
         ) : filtered.length === 0 ? (
           <p className="text-sm text-muted-foreground">No users found.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-muted-foreground">
-                <tr className="border-b">
-                  <th className="py-2 text-left">{thBtn("name", "Name")}</th>
-                  <th className="py-2 text-left">
-                    {thBtn("fullName", "Full Name")}
-                  </th>
-                  <th className="py-2 text-left">
-                    {thBtn("extension", "Extension")}
-                  </th>
-                  <th className="py-2 text-left">
-                    {thBtn("assignedPackage", "Package")}
-                  </th>
-                  <th className="py-2 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((u) => (
-                  <tr key={u.guid} className="border-b last:border-0">
-                    <td className="py-2">{u.name}</td>
-                    <td className="py-2">{u.fullName}</td>
-                    <td className="py-2">{u.extension}</td>
-                    <td className="py-2">
-                      {renderPackageLabel(u.assignedPackage)}
-                    </td>
-                    <td className="py-2">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-xs"
-                          onClick={() => startEdit(u)}
-                          aria-label={`Edit ${u.name}`}
-                          title="Edit user"
-                        >
-                          <Pencil />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-xs"
-                          onClick={() => startDelete(u)}
-                          aria-label={`Delete ${u.name}`}
-                          title="Delete user"
-                        >
-                          <Trash2 />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <UsersTable
+            rows={paged}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onToggleSort={toggleSort}
+            onEdit={startEdit}
+            onDelete={startDelete}
+            renderPackageLabel={renderPackageLabel}
+          />
         )}
 
-        {meta ? (
-          <details className="mt-4">
-            <summary className="cursor-pointer text-sm text-muted-foreground">
-              Debug
-            </summary>
-            <pre className="mt-2 max-h-96 overflow-auto rounded border p-3 text-xs">
-              {JSON.stringify(meta, null, 2)}
-            </pre>
-          </details>
-        ) : null}
-
-        {raw ? (
-          <details className="mt-4">
-            <summary className="cursor-pointer text-sm text-muted-foreground">
-              Raw response
-            </summary>
-            <pre className="mt-2 max-h-96 overflow-auto rounded border p-3 text-xs">
-              {raw}
-            </pre>
-          </details>
+        {filtered.length > 0 ? (
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              Showing {Math.min((page - 1) * pageSize + 1, filtered.length)}-
+              {Math.min(page * pageSize, filtered.length)} of {filtered.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded border px-2 py-1 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+              >
+                Prev
+              </button>
+              <span>
+                Page {page} of {pageCount}
+              </span>
+              <button
+                type="button"
+                className="rounded border px-2 py-1 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                disabled={page >= pageCount}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         ) : null}
       </Card>
-
-      <Sheet
+      <UserEditDrawer
         open={editOpen}
         onOpenChange={(open) => (open ? setEditOpen(true) : closeEdit())}
-      >
-        <SheetContent side="right" className="sm:max-w-md flex h-full flex-col">
-          <SheetHeader>
-            <SheetTitle>Edit user</SheetTitle>
-            <SheetDescription>
-              Update user details for this system.
-            </SheetDescription>
-          </SheetHeader>
+        editSaving={editSaving}
+        editError={editError}
+        title="Edit user"
+        description="Update user details for this system."
+        editState={editState}
+        setEditState={setEditState}
+        confirmPassword={confirmPassword}
+        setConfirmPassword={setConfirmPassword}
+        confirmLoginCode={confirmLoginCode}
+        setConfirmLoginCode={setConfirmLoginCode}
+        confirmVoicemailCode={confirmVoicemailCode}
+        setConfirmVoicemailCode={setConfirmVoicemailCode}
+        showPassword={showPassword}
+        setShowPassword={setShowPassword}
+        showLoginCode={showLoginCode}
+        setShowLoginCode={setShowLoginCode}
+        showVoicemailCode={showVoicemailCode}
+        setShowVoicemailCode={setShowVoicemailCode}
+        onSubmit={submitEdit}
+        onCancel={closeEdit}
+        packageOptions={packageOptions}
+        applyPackageRules={applyPackageRules}
+        isFeatureDisabled={isFeatureDisabled}
+      />
 
-          <form
-            onSubmit={submitEdit}
-            className="flex flex-1 min-h-0 flex-col"
-          >
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 pt-2">
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-fullname">Full Name</Label>
-                  <Input
-                    id="edit-fullname"
-                    value={editState.fullName}
-                    onChange={(e) =>
-                      setEditState((prev) => ({
-                        ...prev,
-                        fullName: e.target.value,
-                      }))
-                    }
-                    autoComplete="off"
-                    disabled={editSaving}
-                  />
-                </div>
+      <UserEditDrawer
+        open={createOpen}
+        onOpenChange={(open) => (open ? setCreateOpen(true) : closeCreate())}
+        editSaving={createSaving}
+        editError={createError}
+        title="Add user"
+        description="Create a new user for this system."
+        submitLabel="Create user"
+        editState={createState}
+        setEditState={setCreateState}
+        confirmPassword={createConfirmPassword}
+        setConfirmPassword={setCreateConfirmPassword}
+        confirmLoginCode={createConfirmLoginCode}
+        setConfirmLoginCode={setCreateConfirmLoginCode}
+        confirmVoicemailCode={createConfirmVoicemailCode}
+        setConfirmVoicemailCode={setCreateConfirmVoicemailCode}
+        showPassword={createShowPassword}
+        setShowPassword={setCreateShowPassword}
+        showLoginCode={createShowLoginCode}
+        setShowLoginCode={setCreateShowLoginCode}
+        showVoicemailCode={createShowVoicemailCode}
+        setShowVoicemailCode={setCreateShowVoicemailCode}
+        onSubmit={submitCreate}
+        onCancel={closeCreate}
+        packageOptions={packageOptions}
+        applyPackageRules={applyPackageRules}
+        isFeatureDisabled={isFeatureDisabled}
+      />
 
-                <div className="space-y-2">
-                  <Label htmlFor="edit-extension">Extension</Label>
-                  <Input
-                    id="edit-extension"
-                    value={editState.extension}
-                    onChange={(e) =>
-                      setEditState((prev) => ({
-                        ...prev,
-                        extension: e.target.value,
-                      }))
-                    }
-                    autoComplete="off"
-                    disabled={editSaving}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Profile</Label>
-                  <Select
-                    value={editState.assignedPackage}
-                    onValueChange={(value) =>
-                      setEditState((prev) => applyPackageRules(value, prev))
-                    }
-                    disabled={editSaving}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select a profile" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {packageOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Profile Features</Label>
-                  <div className="space-y-2">
-                    {renderBooleanField(
-                      "edit-receptionist",
-                      "Receptionist",
-                      editState.receptionist,
-                      (nextValue) =>
-                        setEditState((prev) => ({
-                          ...prev,
-                          receptionist: nextValue,
-                        })),
-                      isFeatureDisabled(editState.assignedPackage, "receptionist"),
-                    )}
-
-                    {renderBooleanField(
-                      "edit-softphone",
-                      "SoftPhone",
-                      editState.flareEnabled,
-                      (nextValue) =>
-                        setEditState((prev) => ({
-                          ...prev,
-                          flareEnabled: nextValue,
-                        })),
-                      isFeatureDisabled(editState.assignedPackage, "flareEnabled"),
-                    )}
-
-                    {renderBooleanField(
-                      "edit-onex-portal",
-                      "One-X Portal Services",
-                      editState.oneXClient,
-                      (nextValue) =>
-                        setEditState((prev) => ({
-                          ...prev,
-                          oneXClient: nextValue,
-                        })),
-                      isFeatureDisabled(editState.assignedPackage, "oneXClient"),
-                    )}
-
-                    {renderBooleanField(
-                      "edit-onex-telecommuter",
-                      "One-X Telecommuter",
-                      editState.oneXTelecommuter,
-                      (nextValue) =>
-                        setEditState((prev) => ({
-                          ...prev,
-                          oneXTelecommuter: nextValue,
-                        })),
-                      isFeatureDisabled(
-                        editState.assignedPackage,
-                        "oneXTelecommuter",
-                      ),
-                    )}
-
-                    {renderBooleanField(
-                      "edit-remote-worker",
-                      "Remote Worker",
-                      editState.remoteWorker,
-                      (nextValue) =>
-                        setEditState((prev) => ({
-                          ...prev,
-                          remoteWorker: nextValue,
-                        })),
-                      isFeatureDisabled(editState.assignedPackage, "remoteWorker"),
-                    )}
-
-                    {renderBooleanField(
-                      "edit-voip-client",
-                      "Desktop/VoIP Client",
-                      editState.flare,
-                      (nextValue) =>
-                        setEditState((prev) => ({
-                          ...prev,
-                          flare: nextValue,
-                        })),
-                      isFeatureDisabled(editState.assignedPackage, "flare"),
-                    )}
-
-                    {renderBooleanField(
-                      "edit-mobile-voip-client",
-                      "Mobile VoIP Client",
-                      editState.mobilityFeatures,
-                      (nextValue) =>
-                        setEditState((prev) => ({
-                          ...prev,
-                          mobilityFeatures: nextValue,
-                        })),
-                      isFeatureDisabled(
-                        editState.assignedPackage,
-                        "mobilityFeatures",
-                      ),
-                    )}
-
-                    {renderBooleanField(
-                      "edit-web-collaboration",
-                      "Web Collaboration",
-                      editState.webCollaboration,
-                      (nextValue) =>
-                        setEditState((prev) => ({
-                          ...prev,
-                          webCollaboration: nextValue,
-                        })),
-                      isFeatureDisabled(
-                        editState.assignedPackage,
-                        "webCollaboration",
-                      ),
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded border p-3">
-                  <p className="text-sm font-medium">Credentials</p>
-                  <div className="mt-3 space-y-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-username">Username</Label>
-                      <Input
-                        id="edit-username"
-                        value={editState.name}
-                        onChange={(e) =>
-                          setEditState((prev) => ({
-                            ...prev,
-                            name: e.target.value,
-                          }))
-                        }
-                        autoComplete="off"
-                        disabled={editSaving}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-password">Password</Label>
-                      <InputGroup>
-                        <InputGroupInput
-                          id="edit-password"
-                          type={showPassword ? "text" : "password"}
-                          value={editState.password}
-                          onChange={(e) =>
-                            setEditState((prev) => ({
-                              ...prev,
-                              password: e.target.value,
-                            }))
-                          }
-                          autoComplete="new-password"
-                          disabled={editSaving}
-                        />
-                        <InputGroupAddon align="inline-end">
-                          <InputGroupButton
-                            type="button"
-                            onClick={() => setShowPassword((v) => !v)}
-                            aria-label={
-                              showPassword ? "Hide password" : "Show password"
-                            }
-                          >
-                            {showPassword ? <EyeOff /> : <Eye />}
-                          </InputGroupButton>
-                        </InputGroupAddon>
-                      </InputGroup>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-confirm-password">
-                        Confirm Password
-                      </Label>
-                      <InputGroup>
-                        <InputGroupInput
-                          id="edit-confirm-password"
-                          type={showPassword ? "text" : "password"}
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          autoComplete="new-password"
-                          disabled={editSaving}
-                        />
-                        <InputGroupAddon align="inline-end">
-                          <InputGroupButton
-                            type="button"
-                            onClick={() => setShowPassword((v) => !v)}
-                            aria-label={
-                              showPassword ? "Hide password" : "Show password"
-                            }
-                          >
-                            {showPassword ? <EyeOff /> : <Eye />}
-                          </InputGroupButton>
-                        </InputGroupAddon>
-                      </InputGroup>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-login-code">Login Code</Label>
-                      <InputGroup>
-                        <InputGroupInput
-                          id="edit-login-code"
-                          type={showLoginCode ? "text" : "password"}
-                          value={editState.loginCode}
-                          onChange={(e) =>
-                            setEditState((prev) => ({
-                              ...prev,
-                              loginCode: e.target.value,
-                            }))
-                          }
-                          disabled={editSaving}
-                        />
-                        <InputGroupAddon align="inline-end">
-                          <InputGroupButton
-                            type="button"
-                            onClick={() => setShowLoginCode((v) => !v)}
-                            aria-label={
-                              showLoginCode
-                                ? "Hide login code"
-                                : "Show login code"
-                            }
-                          >
-                            {showLoginCode ? <EyeOff /> : <Eye />}
-                          </InputGroupButton>
-                        </InputGroupAddon>
-                      </InputGroup>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-confirm-login-code">
-                        Confirm Login Code
-                      </Label>
-                      <InputGroup>
-                        <InputGroupInput
-                          id="edit-confirm-login-code"
-                          type={showLoginCode ? "text" : "password"}
-                          value={confirmLoginCode}
-                          onChange={(e) => setConfirmLoginCode(e.target.value)}
-                          disabled={editSaving}
-                        />
-                        <InputGroupAddon align="inline-end">
-                          <InputGroupButton
-                            type="button"
-                            onClick={() => setShowLoginCode((v) => !v)}
-                            aria-label={
-                              showLoginCode
-                                ? "Hide login code"
-                                : "Show login code"
-                            }
-                          >
-                            {showLoginCode ? <EyeOff /> : <Eye />}
-                          </InputGroupButton>
-                        </InputGroupAddon>
-                      </InputGroup>
-                    </div>
-                  </div>
-                </div>
-
-                {renderBooleanField(
-                  "edit-can-intrude",
-                  "Can Intrude",
-                  editState.canIntrude,
-                  (nextValue) =>
-                    setEditState((prev) => ({
-                      ...prev,
-                      canIntrude: nextValue,
-                    })),
-                )}
-
-                {renderBooleanField(
-                  "edit-cannot-be-intruded",
-                  "Cannot Be Intruded",
-                  editState.cannotBeIntruded,
-                  (nextValue) =>
-                    setEditState((prev) => ({
-                      ...prev,
-                      cannotBeIntruded: nextValue,
-                    })),
-                )}
-
-                {renderBooleanField(
-                  "edit-dnd",
-                  "Do Not Disturb",
-                  editState.doNotDisturb,
-                  (nextValue) =>
-                    setEditState((prev) => ({
-                      ...prev,
-                      doNotDisturb: nextValue,
-                    })),
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-dnd-exceptions">DND Exceptions</Label>
-                  <Input
-                    id="edit-dnd-exceptions"
-                    value={editState.dndExceptions}
-                    onChange={(e) =>
-                      setEditState((prev) => ({
-                        ...prev,
-                        dndExceptions: e.target.value,
-                      }))
-                    }
-                    disabled={editSaving}
-                  />
-                </div>
-
-                {renderBooleanField(
-                  "edit-force-account-code",
-                  "Force Account Code",
-                  editState.forceAccountCode,
-                  (nextValue) =>
-                    setEditState((prev) => ({
-                      ...prev,
-                      forceAccountCode: nextValue,
-                    })),
-                )}
-
-                {renderBooleanField(
-                  "edit-idle-line-preference",
-                  "Idle Line Preference",
-                  editState.idleLinePreference,
-                  (nextValue) =>
-                    setEditState((prev) => ({
-                      ...prev,
-                      idleLinePreference: nextValue,
-                    })),
-                )}
-
-                {renderBooleanField(
-                  "edit-outgoing-call-bar",
-                  "Outgoing Call Bar",
-                  editState.outgoingCallBar,
-                  (nextValue) =>
-                    setEditState((prev) => ({
-                      ...prev,
-                      outgoingCallBar: nextValue,
-                    })),
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-out-of-hours-rights">
-                    Out Of Hours User Rights
-                  </Label>
-                  <Input
-                    id="edit-out-of-hours-rights"
-                    value={editState.outOfHoursUserRights}
-                    onChange={(e) =>
-                      setEditState((prev) => ({
-                        ...prev,
-                        outOfHoursUserRights: e.target.value,
-                      }))
-                    }
-                    disabled={editSaving}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-priority">Priority</Label>
-                  <Input
-                    id="edit-priority"
-                    value={editState.priority}
-                    onChange={(e) =>
-                      setEditState((prev) => ({
-                        ...prev,
-                        priority: e.target.value,
-                      }))
-                    }
-                    disabled={editSaving}
-                  />
-                </div>
-
-                <div className="rounded border p-3">
-                  <p className="text-sm font-medium">SIP Settings</p>
-                  <div className="mt-3 space-y-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-sip-contact">SIP Contact</Label>
-                      <Input
-                        id="edit-sip-contact"
-                        value={editState.sipContact}
-                        onChange={(e) =>
-                          setEditState((prev) => ({
-                            ...prev,
-                            sipContact: e.target.value,
-                          }))
-                        }
-                        disabled={editSaving}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-sip-name">SIP Name</Label>
-                      <Input
-                        id="edit-sip-name"
-                        value={editState.sipName}
-                        onChange={(e) =>
-                          setEditState((prev) => ({
-                            ...prev,
-                            sipName: e.target.value,
-                          }))
-                        }
-                        disabled={editSaving}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Twinning Type</Label>
-                  <Select
-                    value={editState.twinningType}
-                    onValueChange={(value) =>
-                      setEditState((prev) => ({
-                        ...prev,
-                        twinningType: value,
-                      }))
-                    }
-                    disabled={editSaving}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select twinning type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TWINNING_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-user-rights">User Rights</Label>
-                  <Input
-                    id="edit-user-rights"
-                    value={editState.userRights}
-                    onChange={(e) =>
-                      setEditState((prev) => ({
-                        ...prev,
-                        userRights: e.target.value,
-                      }))
-                    }
-                    disabled={editSaving}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-user-rights-time-profile">
-                    User Rights Time Profile
-                  </Label>
-                  <Input
-                    id="edit-user-rights-time-profile"
-                    value={editState.userRightsTimeProfile}
-                    onChange={(e) =>
-                      setEditState((prev) => ({
-                        ...prev,
-                        userRightsTimeProfile: e.target.value,
-                      }))
-                    }
-                    disabled={editSaving}
-                  />
-                </div>
-
-                <div className="rounded border p-3">
-                  <p className="text-sm font-medium">Voicemail</p>
-                  <div className="mt-3 space-y-3">
-                    {renderBooleanField(
-                      "edit-voicemail-on",
-                      "Voicemail On",
-                      editState.voicemailOn,
-                      (nextValue) =>
-                        setEditState((prev) => ({
-                          ...prev,
-                          voicemailOn: nextValue,
-                        })),
-                    )}
-
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-voicemail-code">Voicemail Code</Label>
-                      <InputGroup>
-                        <InputGroupInput
-                          id="edit-voicemail-code"
-                          type={showVoicemailCode ? "text" : "password"}
-                          value={editState.voicemailCode}
-                          onChange={(e) =>
-                            setEditState((prev) => ({
-                              ...prev,
-                              voicemailCode: e.target.value,
-                            }))
-                          }
-                          disabled={editSaving}
-                        />
-                        <InputGroupAddon align="inline-end">
-                          <InputGroupButton
-                            type="button"
-                            onClick={() => setShowVoicemailCode((v) => !v)}
-                            aria-label={
-                              showVoicemailCode
-                                ? "Hide voicemail code"
-                                : "Show voicemail code"
-                            }
-                          >
-                            {showVoicemailCode ? <EyeOff /> : <Eye />}
-                          </InputGroupButton>
-                        </InputGroupAddon>
-                      </InputGroup>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-confirm-voicemail-code">
-                        Confirm Voicemail Code
-                      </Label>
-                      <InputGroup>
-                        <InputGroupInput
-                          id="edit-confirm-voicemail-code"
-                          type={showVoicemailCode ? "text" : "password"}
-                          value={confirmVoicemailCode}
-                          onChange={(e) =>
-                            setConfirmVoicemailCode(e.target.value)
-                          }
-                          disabled={editSaving}
-                        />
-                        <InputGroupAddon align="inline-end">
-                          <InputGroupButton
-                            type="button"
-                            onClick={() => setShowVoicemailCode((v) => !v)}
-                            aria-label={
-                              showVoicemailCode
-                                ? "Hide voicemail code"
-                                : "Show voicemail code"
-                            }
-                          >
-                            {showVoicemailCode ? <EyeOff /> : <Eye />}
-                          </InputGroupButton>
-                        </InputGroupAddon>
-                      </InputGroup>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-voicemail-email">
-                        Voicemail Email
-                      </Label>
-                      <Input
-                        id="edit-voicemail-email"
-                        value={editState.voicemailEmail}
-                        onChange={(e) =>
-                          setEditState((prev) => ({
-                            ...prev,
-                            voicemailEmail: e.target.value,
-                          }))
-                        }
-                        disabled={editSaving}
-                      />
-                    </div>
-
-                    {renderBooleanField(
-                      "edit-ums-web-services",
-                      "UMS Web Services",
-                      editState.umsWebServices,
-                      (nextValue) =>
-                        setEditState((prev) => ({
-                          ...prev,
-                          umsWebServices: nextValue,
-                        })),
-                    )}
-                  </div>
-                </div>
-
-                {renderBooleanField(
-                  "edit-x-directory",
-                  "X Directory",
-                  editState.xDirectory,
-                  (nextValue) =>
-                    setEditState((prev) => ({
-                      ...prev,
-                      xDirectory: nextValue,
-                    })),
-                )}
-
-                {editError ? (
-                  <p className="text-sm text-red-600 whitespace-pre-wrap">
-                    {editError}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-
-            <SheetFooter className="border-t bg-background">
-              <div className="flex items-center justify-end gap-2 px-4 pb-4 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={closeEdit}
-                  disabled={editSaving}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={editSaving || !editRow}>
-                  {editSaving ? (
-                    <>
-                      <Loader2 className="animate-spin" />
-                      Saving
-                    </>
-                  ) : (
-                    "Save changes"
-                  )}
-                </Button>
-              </div>
-            </SheetFooter>
-          </form>
-        </SheetContent>
-      </Sheet>
-
-      <AlertDialog open={deleteOpen} onOpenChange={(open) => (!deleteBusy ? setDeleteOpen(open) : null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete user?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently remove{" "}
-              <span className="font-medium text-foreground">
-                {deleteRow?.name || "this user"}
-              </span>
-              .
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          {deleteError ? (
-            <p className="text-sm text-red-600 whitespace-pre-wrap">
-              {deleteError}
-            </p>
-          ) : null}
-
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteBusy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={(e) => {
-                e.preventDefault();
-                void confirmDelete();
-              }}
-              disabled={deleteBusy || !deleteRow}
-            >
-              {deleteBusy ? (
-                <>
-                  <Loader2 className="animate-spin" />
-                  Deleting
-                </>
-              ) : (
-                "Delete"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <UserDeleteDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        deleteBusy={deleteBusy}
+        deleteError={deleteError}
+        userName={deleteRow?.name ?? null}
+        onConfirm={() => void confirmDelete()}
+      />
     </div>
   );
 }

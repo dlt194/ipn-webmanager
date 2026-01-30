@@ -21,3 +21,18 @@ model ServerConfig {
 
   @@index([ownerUpn])
 }
+
+model ServerStatsBaseline {
+  id            String   @id @default(cuid())
+  serverConfigId String
+  ownerUpn      String
+  totalUsers    Int
+  licensedCount Int
+  statsJson     Json
+  lastSyncedAt  DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([serverConfigId, ownerUpn])
+  @@index([ownerUpn])
+}

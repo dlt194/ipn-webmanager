@@ -1,4 +1,6 @@
 import { Agent, type Dispatcher } from "undici";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 
 const AUTH_HEADERS: Readonly<Record<string, string>> = {
   "X-User-Agent": "Avaya-SDKUser",
@@ -40,6 +42,68 @@ function makeDispatcher(allowInsecureTls?: boolean): Dispatcher {
     headersTimeout: 10_000,
     bodyTimeout: 20_000,
   });
+}
+
+const LOG_DIR = "/tmp/ipo-requests";
+
+function redactSensitive(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(redactSensitive);
+
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+    if (/password|logincode|voicemailcode/i.test(key)) {
+      out[key] = "[REDACTED]";
+    } else {
+      out[key] = redactSensitive(val);
+    }
+  }
+  return out;
+}
+
+function formatResponseText(text: string): string {
+  if (!text) return "";
+  const trimmed = text.trim();
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return JSON.stringify(redactSensitive(parsed));
+  } catch {
+    // Not JSON; return a truncated string.
+    const maxLen = 2000;
+    return trimmed.length > maxLen ? `${trimmed.slice(0, maxLen)}…` : trimmed;
+  }
+}
+
+async function logIpoRequest(entry: {
+  method: string;
+  url: string;
+  body?: unknown;
+  status?: number;
+  ok?: boolean;
+  error?: string;
+  responseText?: string;
+}) {
+  if (entry.method !== "POST" && entry.method !== "PUT") return;
+
+  try {
+    await fs.mkdir(LOG_DIR, { recursive: true });
+    const now = new Date();
+    const file = path.join(LOG_DIR, `${now.toISOString().slice(0, 10)}.log`);
+    const payload = {
+      ts: now.toISOString(),
+      method: entry.method,
+      url: entry.url,
+      ok: entry.ok,
+      status: entry.status,
+      error: entry.error,
+      body: entry.body ? redactSensitive(entry.body) : undefined,
+      responseText: entry.responseText,
+    };
+    await fs.appendFile(file, `${JSON.stringify(payload)}\n`, "utf8");
+  } catch {
+    // best-effort logging only
+  }
 }
 
 function getSetCookie(res: Response): string[] {
@@ -204,6 +268,7 @@ export async function ipoRequestText(args: {
   body?: unknown;
   allowInsecureTls?: boolean;
   headersOverride?: Record<string, string>;
+  blockDeleteIfUserName?: string;
 }): Promise<{ status: number; text: string; contentType: string | null }> {
   const base = normalizeBase(args.host);
   const url = `${base}${args.path.startsWith("/") ? "" : "/"}${args.path}`;
@@ -216,22 +281,60 @@ export async function ipoRequestText(args: {
     ...(args.headersOverride ?? {}),
   };
 
-  const res = await fetch(url, {
-    method: args.method ?? "GET",
-    headers,
-    body: args.body ? JSON.stringify(args.body) : undefined,
-    // @ts-expect-error dispatcher supported by undici fetch
-    dispatcher,
-    cache: "no-store",
-  });
+  if (
+    (args.method ?? "GET") === "DELETE" &&
+    args.blockDeleteIfUserName?.toLowerCase() === "nouser"
+  ) {
+    throw new Error("Deletion is not allowed for NoUser.");
+  }
+
+  let res: Response | null = null;
+  try {
+    res = await fetch(url, {
+      method: args.method ?? "GET",
+      headers,
+      body: args.body ? JSON.stringify(args.body) : undefined,
+      // @ts-expect-error dispatcher supported by undici fetch
+      dispatcher,
+      cache: "no-store",
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    void logIpoRequest({
+      method: args.method ?? "GET",
+      url,
+      body: args.body,
+      ok: false,
+      error: msg,
+    });
+    throw e;
+  }
 
   const text = await readText(res);
+  const responseText = formatResponseText(text);
 
   if (!res.ok) {
+    void logIpoRequest({
+      method: args.method ?? "GET",
+      url,
+      body: args.body,
+      ok: false,
+      status: res.status,
+      responseText,
+    });
     throw new Error(
       `IPO request failed (${res.status}): ${text || res.statusText}`,
     );
   }
+
+  void logIpoRequest({
+    method: args.method ?? "GET",
+    url,
+    body: args.body,
+    ok: true,
+    status: res.status,
+    responseText,
+  });
 
   return {
     status: res.status,

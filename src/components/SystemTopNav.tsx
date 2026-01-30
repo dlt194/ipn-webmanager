@@ -17,6 +17,7 @@ type Props = {
 
 const sections = [
   { label: "Overview", href: "" },
+  { label: "Systems", href: "systems" },
   { label: "Users", href: "users" },
   { label: "Extensions", href: "extensions" },
   { label: "Hunt Groups", href: "hunt-groups" },
